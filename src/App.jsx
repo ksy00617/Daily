@@ -91,6 +91,16 @@ const hasRecord = (d) =>
     visibleSlots(d).length > 0 ||
     (d.notes || '').trim().length > 0);
 
+const daysKey = (u) => `planner_days_${u}`;
+const unsavedKey = (u) => `planner_unsaved_${u}`;
+const readJSON = (k, fallback) => {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+};
+const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* noop */ } };
+const saveErrorText = (e) => (e && e.code === 'permission-denied'
+  ? '클라우드 저장 권한이 막혀 있어요. 이 기기에는 저장해 두었어요.'
+  : '저장에 실패했어요. 이 기기에 저장해 두고, 연결되면 다시 올릴게요.');
+
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 const loadLocalSettings = () => {
@@ -315,6 +325,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [pending, setPending] = useState(0);
+  const [saveError, setSaveError] = useState(false);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
 
   const toastTimer = useRef(null);
@@ -369,10 +380,7 @@ export default function App() {
     dirty.current = {};
     setDays({});
     setLoaded(false);
-    try {
-      localStorage.removeItem('notion_planner_stable_backup');
-      localStorage.removeItem('notion_planner_active_date');
-    } catch (e) { /* noop */ }
+    try { localStorage.removeItem('notion_planner_active_date'); } catch (e) { /* noop */ }
     await signOut(auth);
     showToast('로그아웃되었습니다.');
   };
@@ -381,6 +389,24 @@ export default function App() {
   useEffect(() => {
     if (!user) return undefined;
     setLoaded(false);
+
+    // 1) 이 기기에 저장해 둔 기록을 먼저 보여 줌 (클라우드가 안 돼도 사라지지 않게)
+    let local = readJSON(daysKey(user.uid), null);
+    let unsaved = readJSON(unsavedKey(user.uid), []);
+    if (!local) {
+      // 예전 노션 스타일 버전이 이 브라우저에 남겨 둔 기록이 있으면 가져와서 클라우드에 올림
+      const legacy = readJSON('notion_planner_stable_backup', null);
+      if (legacy && typeof legacy === 'object' && Object.keys(legacy).length) {
+        local = legacy;
+        unsaved = Object.keys(legacy);
+        writeJSON(daysKey(user.uid), local);
+        writeJSON(unsavedKey(user.uid), unsaved);
+      }
+    }
+    if (local) setDays(local);
+    unsaved.forEach((k) => { dirty.current[k] = (dirty.current[k] || 0) + 1; });
+    setPending(Object.keys(dirty.current).length);
+
     const ref = collection(db, 'users', user.uid, 'days');
     const unsub = onSnapshot(
       ref,
@@ -397,7 +423,9 @@ export default function App() {
       },
       (err) => {
         console.error('sync error', err);
-        showToast('동기화에 문제가 생겼어요. 연결 상태를 확인해 주세요.');
+        showToast(err && err.code === 'permission-denied'
+          ? '클라우드에서 일정을 불러올 권한이 막혀 있어요. 이 기기에 저장된 기록을 보여 드려요.'
+          : '동기화에 문제가 생겼어요. 이 기기에 저장된 기록을 보여 드려요.');
         setLoaded(true);
       }
     );
@@ -503,19 +531,43 @@ export default function App() {
     dirty.current[k] = version;
     clearTimeout(saveTimers.current[k]);
     setPending(Object.keys(dirty.current).length);
+    const list = readJSON(unsavedKey(user.uid), []);
+    if (!list.includes(k)) writeJSON(unsavedKey(user.uid), [...list, k]);
     saveTimers.current[k] = setTimeout(async () => {
       const data = daysRef.current[k];
       try {
         if (data) await setDoc(doc(db, 'users', user.uid, 'days', k), data);
+        if (dirty.current[k] === version) {
+          delete dirty.current[k];
+          writeJSON(unsavedKey(user.uid), readJSON(unsavedKey(user.uid), []).filter((x) => x !== k));
+        }
+        setSaveError(false);
       } catch (e) {
+        // 실패한 기록은 이 기기에 남겨 두고 다음에 다시 올림
         console.error('save failed', e);
-        showToast('저장에 실패했어요. 연결되면 다시 저장할게요.');
+        setSaveError(true);
+        showToast(saveErrorText(e));
       } finally {
-        if (dirty.current[k] === version) delete dirty.current[k];
         setPending(Object.keys(dirty.current).length);
       }
     }, 600);
   }, [user, showToast]);
+
+  /* 이 기기에 기록을 계속 저장해 둠 */
+  useEffect(() => {
+    if (user && loaded) writeJSON(daysKey(user.uid), days);
+  }, [days, user, loaded]);
+
+  /* 못 올린 기록은 불러온 직후·다시 연결됐을 때 다시 올림 */
+  const retryUnsaved = useCallback(() => {
+    if (!user) return;
+    readJSON(unsavedKey(user.uid), []).forEach((k) => { if (daysRef.current[k]) scheduleSave(k); });
+  }, [user, scheduleSave]);
+  useEffect(() => { if (loaded) retryUnsaved(); }, [loaded, retryUnsaved]);
+  useEffect(() => {
+    window.addEventListener('online', retryUnsaved);
+    return () => window.removeEventListener('online', retryUnsaved);
+  }, [retryUnsaved]);
 
   const updateDay = useCallback((k, fn) => {
     setDays((prev) => {
@@ -684,8 +736,8 @@ export default function App() {
     );
   }
 
-  const syncText = !online ? '오프라인 · 연결되면 저장' : pending > 0 ? '저장 중…' : '저장됨';
-  const syncCls = !online ? 'dot off' : pending > 0 ? 'dot busy' : 'dot';
+  const syncText = !online ? '오프라인 · 이 기기에 저장됨' : saveError ? '이 기기에만 저장됨' : pending > 0 ? '저장 중…' : '저장됨';
+  const syncCls = !online ? 'dot off' : saveError ? 'dot err' : pending > 0 ? 'dot busy' : 'dot';
 
   return (
     <div className={`app ${themeClass}`}>

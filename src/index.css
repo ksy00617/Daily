@@ -104,6 +104,7 @@ ul { margin: 0; padding: 0; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: #34C759; }
 .dot.busy { background: #FF9F0A; }
 .dot.off { background: var(--ter); }
+.dot.err { background: #FF3B30; }
 .icon-btn { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 10px; color: var(--sec); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .icon-btn:hover { background: var(--hover); color: var(--label); }
 .logout-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; margin-left: 6px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--sec); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
