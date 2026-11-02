@@ -72,7 +72,7 @@ ul { margin: 0; padding: 0; }
 
 .s-xs { --fs: .76; } .s-s { --fs: .84; } .s-m { --fs: .92; }
 
-.app { min-height: 100vh; min-height: 100dvh; position: relative; transition: background .25s, color .25s; }
+.app { --topH: calc(49px + env(safe-area-inset-top)); min-height: 100vh; min-height: 100dvh; position: relative; transition: background .25s, color .25s; }
 
 /* ── 불러오는 중 ── */
 .loading-screen { display: grid; place-items: center; }
@@ -81,7 +81,7 @@ ul { margin: 0; padding: 0; }
 
 /* ── 상단 바 ── */
 .top {
-  position: sticky; top: 0; z-index: 20;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
   background: var(--nav);
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
@@ -111,7 +111,7 @@ ul { margin: 0; padding: 0; }
 .logout-btn:hover { background: var(--hover); color: var(--red); border-color: var(--red); }
 
 /* ── 페이지 ── */
-.page { max-width: 960px; margin: 0 auto; padding: 56px 32px calc(88px + env(safe-area-inset-bottom)); }
+.page { max-width: 960px; margin: 0 auto; padding: calc(56px + var(--topH)) 32px calc(88px + env(safe-area-inset-bottom)); }
 .page-icon { width: 76px; height: 76px; border-radius: 19px; background: #fff; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12), 0 6px 18px rgba(0, 0, 0, .08); display: flex; flex-direction: column; align-items: center; overflow: hidden; line-height: 1; }
 .pi-bar { width: 100%; height: 20px; background: #D70015; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .pi-num { font-size: 36px; font-weight: 500; color: #1D1D1F; margin-top: 9px; letter-spacing: -0.03em; font-family: Inter, -apple-system, system-ui, sans-serif; }
@@ -269,7 +269,7 @@ ul { margin: 0; padding: 0; }
 
 /* ── 휴대폰 ── */
 @media (max-width: 600px) {
-  .page { padding: 28px 16px calc(64px + env(safe-area-inset-bottom)); }
+  .page { padding: calc(28px + var(--topH)) 16px calc(64px + env(safe-area-inset-bottom)); }
   .page-icon { width: 60px; height: 60px; border-radius: 15px; }
   .pi-bar { height: 16px; font-size: 10px; }
   .pi-num { font-size: 28px; margin-top: 7px; }
